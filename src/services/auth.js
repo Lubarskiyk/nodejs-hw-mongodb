@@ -1,14 +1,18 @@
 import { randomBytes } from 'crypto';
-import bcrypt from 'bcrypt';
-import * as handlebars from 'handlebars';
-import createHttpError from 'http-errors';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import { UsersCollection } from '../db/models/User.js';
-import { FIFTEEN_MINUTES, THIRTY_DAYS } from '../constants/index.js';
-import { SessionsCollection } from '../db/models/Session.js';
 import jwt from 'jsonwebtoken';
-import { SMTP } from '../constants/index.js';
+import bcrypt from 'bcrypt';
+import createHttpError from 'http-errors';
+import handlebars from 'handlebars';
+import path from 'node:path';
+import fs from 'node:fs/promises';
+import { UsersCollection } from '../db/models/User.js';
+import {
+  FIFTEEN_MINUTES,
+  THIRTY_DAYS,
+  SMTP,
+  TEMPLATES_DIR,
+} from '../constants/index.js';
+import { SessionsCollection } from '../db/models/Session.js';
 import { env } from '../utils/env.js';
 import { sendEmail } from '../utils/sendMail.js';
 
@@ -27,12 +31,12 @@ export const registerUser = async (payload) => {
 export const loginUser = async (payload) => {
   const user = await UsersCollection.findOne({ email: payload.email });
   if (!user) {
-    throw createHttpError(404, 'User not found!');
+    throw createHttpError(401, 'Email or password invalid!');
   }
 
   const isEqual = await bcrypt.compare(payload.password, user.password);
   if (!isEqual) {
-    throw createHttpError(401, 'Unauthorized!');
+    throw createHttpError(401, 'Email or password invalid!');
   }
 
   await SessionsCollection.deleteOne({ userId: user._id });
@@ -102,7 +106,7 @@ export const requestResetToken = async (email) => {
     },
     env('JWT_SECRET'),
     {
-      expiresIn: '15m',
+      expiresIn: '5m',
     },
   );
 
@@ -127,4 +131,30 @@ export const requestResetToken = async (email) => {
     subject: 'Reset your password',
     html,
   });
+};
+
+export const resetPassword = async (payload) => {
+  let entries;
+
+  try {
+    entries = jwt.verify(payload.token, env('JWT_SECRET'));
+  } catch (err) {
+    throw createHttpError(401, 'Token is expired or invalid!');
+  }
+
+  const user = await UsersCollection.findOne({
+    email: entries.email,
+    _id: entries.sub,
+  });
+
+  if (!user) {
+    throw createHttpError(404, 'User not found!');
+  }
+
+  const encryptedPassword = await bcrypt.hash(payload.password, 10);
+
+  await UsersCollection.updateOne(
+    { _id: user._id },
+    { password: encryptedPassword },
+  );
 };

@@ -10,9 +10,7 @@ const parseIsFavourite = (boolean) => {
   const isString = typeof boolean === 'string';
   if (!isString) return;
 
-  const isFavourite = boolean.toLowerCase();
-
-  return isFavourite;
+  return boolean.toLowerCase();
 };
 
 export const parseFilterParams = (query) => {
